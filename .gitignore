@@ -1,0 +1,44 @@
+# Dart and Flutter
+.dart_tool/
+.packages
+.pub/
+build/
+coverage/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Generated platform files
+android/.gradle/
+android/local.properties
+ios/Pods/
+ios/.symlinks/
+macos/Pods/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Environment and secrets
+.env
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python tooling
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# Local pinned SDK installer output
+.tooling/
+
+# Generated verification evidence and build artifacts
+artifacts/phase0_evidence/

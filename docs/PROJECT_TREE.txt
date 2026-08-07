@@ -1,0 +1,225 @@
+clearscan/
+├── .github
+│   ├── workflows
+│   │   └── flutter-ci.yml
+│   └── dependabot.yml
+├── assets
+│   └── reference
+│       └── clearscan_ui_reference.png
+├── docs
+│   ├── API_CONTRACTS.md
+│   ├── ARCHITECTURE.md
+│   ├── CHANGELOG.md
+│   ├── CONNECTED_HOST_RUNBOOK.md
+│   ├── DATABASE.md
+│   ├── DECISIONS.md
+│   ├── DESIGN_SYSTEM.md
+│   ├── ENVIRONMENT_SETUP.md
+│   ├── HANDOFF.md
+│   ├── KNOWN_ISSUES.md
+│   ├── MASTER_BUILD_PROMPT.md
+│   ├── P00_T03_PROBE_2026-08-07.md
+│   ├── PHASE0_EVIDENCE.md
+│   ├── PROJECT_MASTER.md
+│   ├── PROJECT_TREE.txt
+│   ├── QA_CHECKLIST.md
+│   ├── ROADMAP.md
+│   ├── SIGNING_AND_CI_BASELINE.md
+│   ├── TASKS.md
+│   └── UI_AUDIT.md
+├── integration_test
+│   └── .gitkeep
+├── lib
+│   ├── app
+│   │   ├── configuration
+│   │   │   └── app_config.dart
+│   │   ├── theme
+│   │   │   ├── app_colors.dart
+│   │   │   ├── app_radius.dart
+│   │   │   ├── app_spacing.dart
+│   │   │   └── app_theme.dart
+│   │   └── app.dart
+│   ├── core
+│   │   ├── errors
+│   │   │   └── .gitkeep
+│   │   ├── logging
+│   │   │   └── .gitkeep
+│   │   ├── permissions
+│   │   │   └── .gitkeep
+│   │   ├── storage
+│   │   │   └── .gitkeep
+│   │   ├── utilities
+│   │   │   └── .gitkeep
+│   │   └── widgets
+│   │       ├── .gitkeep
+│   │       ├── adaptive_content_frame.dart
+│   │       ├── document_list_tile.dart
+│   │       ├── prototype_state_panel.dart
+│   │       ├── section_header.dart
+│   │       └── status_announcement.dart
+│   ├── features
+│   │   ├── account
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       └── .gitkeep
+│   │   ├── crop_editor
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       └── crop_adjustment_screen.dart
+│   │   ├── documents
+│   │   │   ├── data
+│   │   │   │   ├── .gitkeep
+│   │   │   │   └── mock_document_data.dart
+│   │   │   ├── domain
+│   │   │   │   ├── .gitkeep
+│   │   │   │   └── document_summary.dart
+│   │   │   └── presentation
+│   │   │       ├── widgets
+│   │   │       │   ├── document_grid_card.dart
+│   │   │       │   └── mock_document_page.dart
+│   │   │       ├── .gitkeep
+│   │   │       ├── document_actions_sheet.dart
+│   │   │       ├── document_viewer_screen.dart
+│   │   │       ├── documents_screen.dart
+│   │   │       ├── multi_page_editor_screen.dart
+│   │   │       └── recently_deleted_screen.dart
+│   │   ├── export
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       └── pdf_export_options_screen.dart
+│   │   ├── filters
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       └── filter_selection_screen.dart
+│   │   ├── folders
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       └── folders_screen.dart
+│   │   ├── home
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       └── home_screen.dart
+│   │   ├── ocr
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       └── ocr_text_workspace_screen.dart
+│   │   ├── onboarding
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       └── onboarding_preview_screen.dart
+│   │   ├── scanner
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       ├── auto_capture_settings_sheet.dart
+│   │   │       ├── capture_review_screen.dart
+│   │   │       ├── capture_session_page_strip.dart
+│   │   │       ├── scan_session_completion_screen.dart
+│   │   │       ├── scanner_import_source_sheet.dart
+│   │   │       ├── scanner_screen.dart
+│   │   │       └── scanner_session_page.dart
+│   │   ├── search
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       └── search_workspace_screen.dart
+│   │   ├── settings
+│   │   │   ├── data
+│   │   │   │   └── .gitkeep
+│   │   │   ├── domain
+│   │   │   │   └── .gitkeep
+│   │   │   └── presentation
+│   │   │       ├── .gitkeep
+│   │   │       ├── help_feedback_screen.dart
+│   │   │       ├── legal_content_screen.dart
+│   │   │       ├── settings_detail_sheets.dart
+│   │   │       └── settings_screen.dart
+│   │   ├── share
+│   │   │   └── presentation
+│   │   │       └── share_options_screen.dart
+│   │   └── shell
+│   │       └── presentation
+│   │           └── app_shell.dart
+│   └── main.dart
+├── scripts
+│   ├── artifact_manifest_test.py
+│   ├── bootstrap_phase0_github_repo.sh
+│   ├── bootstrap_platforms.sh
+│   ├── capture_android_launch_evidence.sh
+│   ├── capture_ios_launch_evidence.sh
+│   ├── capture_phase0_evidence.sh
+│   ├── check.sh
+│   ├── check_offline.sh
+│   ├── complete_phase0_host.sh
+│   ├── environment_doctor.sh
+│   ├── generate_tree.py
+│   ├── install_flutter_sdk.py
+│   ├── install_flutter_sdk.sh
+│   ├── phase0_downloaded_run_test.py
+│   ├── phase0_evidence_test.py
+│   ├── phase0_gate_summary_test.py
+│   ├── phase0_github_bootstrap_contract_test.py
+│   ├── phase0_github_gate_contract_test.py
+│   ├── phase0_launch_evidence_test.py
+│   ├── probe_p00_t03.py
+│   ├── record_phase0_hosted_run.py
+│   ├── run_phase0_github_gate.sh
+│   ├── source_contract_test.py
+│   ├── validate_project.py
+│   ├── verify_ci_pins.py
+│   ├── verify_phase0_downloaded_run.py
+│   ├── verify_phase0_evidence.py
+│   ├── verify_phase0_launch_evidence.py
+│   ├── verify_platforms.py
+│   ├── write_artifact_manifest.py
+│   ├── write_phase0_gate_summary.py
+│   └── write_phase0_launch_report.py
+├── test
+│   └── app_startup_test.dart
+├── tool
+│   ├── fixtures
+│   │   └── flutter_releases_linux.json
+│   └── project.env
+├── .env.example
+├── .flutter-version
+├── .gitignore
+├── analysis_options.yaml
+├── pubspec.yaml
+└── README.md

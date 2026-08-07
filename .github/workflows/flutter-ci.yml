@@ -1,0 +1,421 @@
+name: Flutter quality gate
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  source-quality:
+    name: Source quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Verify immutable CI dependencies
+        run: python3 scripts/verify_ci_pins.py
+
+      - name: Install pinned Flutter from official manifest
+        run: python3 scripts/install_flutter_sdk.py --install-parent "$RUNNER_TEMP/clearscan-tooling"
+
+      - name: Add Flutter to PATH
+        run: echo "$RUNNER_TEMP/clearscan-tooling/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Validate repository contract
+        run: python3 scripts/validate_project.py
+
+      - name: Validate source contract
+        run: python3 scripts/source_contract_test.py
+
+      - name: Validate artifact manifest contract
+        run: python3 scripts/artifact_manifest_test.py
+
+      - name: Validate Phase 0 evidence verifier contract
+        run: python3 scripts/phase0_evidence_test.py
+
+      - name: Validate Phase 0 hosted gate summary contract
+        run: python3 scripts/phase0_gate_summary_test.py
+
+      - name: Validate Phase 0 launch evidence verifier contract
+        run: python3 scripts/phase0_launch_evidence_test.py
+
+      - name: Validate downloaded hosted-run verifier contract
+        run: python3 scripts/phase0_downloaded_run_test.py
+
+      - name: Validate GitHub dispatch/collect contract
+        run: python3 scripts/phase0_github_gate_contract_test.py
+
+      - name: Fetch dependencies
+        run: flutter pub get
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test integration_test
+
+      - name: Analyze source
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+  native-android:
+    name: Generate runners and build Android
+    needs: source-quality
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_sha256: ${{ steps.android_digest.outputs.sha256 }}
+      evidence_verified: ${{ steps.android_verified.outputs.verified }}
+      launch_verified: ${{ steps.android_launch_verified.outputs.verified }}
+      launch_screenshot_sha256: ${{ steps.android_launch_digest.outputs.sha256 }}
+    timeout-minutes: 70
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare Android evidence directory
+        run: mkdir -p artifacts/phase0_evidence
+
+      - name: Install pinned Flutter from official manifest
+        run: |
+          python3 scripts/install_flutter_sdk.py \
+            --install-parent "$RUNNER_TEMP/clearscan-tooling" \
+            2>&1 | tee artifacts/phase0_evidence/flutter-install.log
+
+      - name: Add Flutter to PATH
+        run: echo "$RUNNER_TEMP/clearscan-tooling/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Capture pinned toolchain evidence
+        run: |
+          flutter --version --machine > artifacts/phase0_evidence/flutter-version.json
+          dart --version > artifacts/phase0_evidence/dart-version.txt 2>&1
+          flutter doctor -v > artifacts/phase0_evidence/flutter-doctor.log 2>&1
+
+      - name: Generate official Android and iOS runners
+        run: |
+          ./scripts/bootstrap_platforms.sh \
+            2>&1 | tee artifacts/phase0_evidence/bootstrap-platforms.log
+
+      - name: Verify generated identifiers
+        run: |
+          python3 scripts/verify_platforms.py \
+            --json-output artifacts/phase0_evidence/android-platform-report.json
+
+      - name: Build Android debug APK
+        run: |
+          flutter build apk --debug \
+            2>&1 | tee artifacts/phase0_evidence/android-build.log
+
+      - name: Stage Android APK
+        run: |
+          cp build/app/outputs/flutter-apk/app-debug.apk \
+            artifacts/phase0_evidence/clearscan-debug.apk
+
+      - name: Write Android evidence manifest
+        if: always()
+        run: |
+          if find artifacts/phase0_evidence -type f -print -quit | grep -q .; then
+            python3 scripts/write_artifact_manifest.py \
+              --root artifacts/phase0_evidence \
+              --output artifacts/phase0_evidence/ARTIFACT_MANIFEST.json
+          fi
+
+      - name: Verify completed Android evidence bundle
+        if: success()
+        run: |
+          python3 scripts/verify_phase0_evidence.py \
+            --root artifacts/phase0_evidence \
+            --platform android
+
+      - name: Mark Android evidence verified
+        id: android_verified
+        if: success()
+        run: echo "verified=true" >> "$GITHUB_OUTPUT"
+
+      - name: Record Android APK SHA-256
+        id: android_digest
+        if: success()
+        run: |
+          echo "sha256=$(sha256sum artifacts/phase0_evidence/clearscan-debug.apk | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Android emulator for launch evidence
+        if: success()
+        run: |
+          mkdir -p artifacts/phase0_launch
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK_ROOT" ]; then
+            echo 'Android SDK root is unavailable on the hosted runner.' >&2
+            exit 1
+          fi
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+          export PATH="$SDK_ROOT/platform-tools:$SDK_ROOT/emulator:$PATH"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/emulator" >> "$GITHUB_PATH"
+
+          SDKMANAGER=$(command -v sdkmanager || true)
+          AVDMANAGER=$(command -v avdmanager || true)
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)
+          fi
+          if [ -z "$AVDMANAGER" ]; then
+            AVDMANAGER=$(find "$SDK_ROOT/cmdline-tools" -type f -name avdmanager -print -quit 2>/dev/null || true)
+          fi
+          [ -x "$SDKMANAGER" ] || { echo 'sdkmanager is unavailable.' >&2; exit 1; }
+          [ -x "$AVDMANAGER" ] || { echo 'avdmanager is unavailable.' >&2; exit 1; }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64"
+          echo no | "$AVDMANAGER" create avd \
+            --force \
+            --name clearscan-phase0 \
+            --package "system-images;android-35;google_apis;x86_64"
+
+          sudo chmod 666 /dev/kvm 2>/dev/null || true
+          nohup "$SDK_ROOT/emulator/emulator" \
+            -avd clearscan-phase0 \
+            -no-window \
+            -noaudio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect \
+            -no-snapshot \
+            > artifacts/phase0_launch/android-emulator.log 2>&1 &
+
+          adb wait-for-device
+          for attempt in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = '1' ]; then
+              adb shell input keyevent 82 || true
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'Android emulator did not finish booting.' >&2
+          tail -n 120 artifacts/phase0_launch/android-emulator.log >&2 || true
+          exit 1
+
+      - name: Capture Android launch evidence
+        if: success()
+        run: |
+          ./scripts/capture_android_launch_evidence.sh \
+            --apk artifacts/phase0_evidence/clearscan-debug.apk \
+            --output artifacts/phase0_launch/android
+
+      - name: Mark Android launch evidence verified
+        id: android_launch_verified
+        if: success()
+        run: echo "verified=true" >> "$GITHUB_OUTPUT"
+
+      - name: Record Android launch screenshot SHA-256
+        id: android_launch_digest
+        if: success()
+        run: |
+          echo "sha256=$(sha256sum artifacts/phase0_launch/android/android-launch.png | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Android debug evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: clearscan-android-phase0
+          path: |
+            artifacts/phase0_evidence
+            artifacts/phase0_launch
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  native-ios:
+    name: Generate runners and build iOS simulator
+    needs: source-quality
+    runs-on: macos-latest
+    outputs:
+      artifact_sha256: ${{ steps.ios_digest.outputs.sha256 }}
+      evidence_verified: ${{ steps.ios_verified.outputs.verified }}
+      launch_verified: ${{ steps.ios_launch_verified.outputs.verified }}
+      launch_screenshot_sha256: ${{ steps.ios_launch_digest.outputs.sha256 }}
+    timeout-minutes: 65
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare iOS evidence directory
+        run: mkdir -p artifacts/phase0_evidence
+
+      - name: Install pinned Flutter from official manifest
+        run: |
+          python3 scripts/install_flutter_sdk.py \
+            --install-parent "$RUNNER_TEMP/clearscan-tooling" \
+            2>&1 | tee artifacts/phase0_evidence/flutter-install.log
+
+      - name: Add Flutter to PATH
+        run: echo "$RUNNER_TEMP/clearscan-tooling/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Capture pinned toolchain evidence
+        run: |
+          flutter --version --machine > artifacts/phase0_evidence/flutter-version.json
+          dart --version > artifacts/phase0_evidence/dart-version.txt 2>&1
+          flutter doctor -v > artifacts/phase0_evidence/flutter-doctor.log 2>&1
+
+      - name: Generate official Android and iOS runners
+        run: |
+          ./scripts/bootstrap_platforms.sh \
+            2>&1 | tee artifacts/phase0_evidence/bootstrap-platforms.log
+
+      - name: Verify generated identifiers
+        run: |
+          python3 scripts/verify_platforms.py \
+            --json-output artifacts/phase0_evidence/ios-platform-report.json
+
+      - name: Build iOS simulator application
+        run: |
+          flutter build ios --simulator --no-codesign \
+            2>&1 | tee artifacts/phase0_evidence/ios-build.log
+
+      - name: Archive iOS simulator application
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/ios/iphonesimulator/Runner.app \
+            artifacts/phase0_evidence/clearscan-ios-simulator.zip
+
+      - name: Write iOS evidence manifest
+        if: always()
+        run: |
+          if find artifacts/phase0_evidence -type f -print -quit | grep -q .; then
+            python3 scripts/write_artifact_manifest.py \
+              --root artifacts/phase0_evidence \
+              --output artifacts/phase0_evidence/ARTIFACT_MANIFEST.json
+          fi
+
+      - name: Verify completed iOS evidence bundle
+        if: success()
+        run: |
+          python3 scripts/verify_phase0_evidence.py \
+            --root artifacts/phase0_evidence \
+            --platform ios
+
+      - name: Mark iOS evidence verified
+        id: ios_verified
+        if: success()
+        run: echo "verified=true" >> "$GITHUB_OUTPUT"
+
+      - name: Record iOS simulator SHA-256
+        id: ios_digest
+        if: success()
+        run: |
+          echo "sha256=$(shasum -a 256 artifacts/phase0_evidence/clearscan-ios-simulator.zip | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Capture iOS simulator launch evidence
+        if: success()
+        run: |
+          ./scripts/capture_ios_launch_evidence.sh \
+            --archive artifacts/phase0_evidence/clearscan-ios-simulator.zip \
+            --output artifacts/phase0_launch/ios
+
+      - name: Mark iOS launch evidence verified
+        id: ios_launch_verified
+        if: success()
+        run: echo "verified=true" >> "$GITHUB_OUTPUT"
+
+      - name: Record iOS launch screenshot SHA-256
+        id: ios_launch_digest
+        if: success()
+        run: |
+          echo "sha256=$(shasum -a 256 artifacts/phase0_launch/ios/ios-launch.png | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload iOS simulator evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: clearscan-ios-phase0
+          path: |
+            artifacts/phase0_evidence
+            artifacts/phase0_launch
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+
+  phase0-summary:
+    name: Phase 0 hosted gate summary
+    if: always()
+    needs:
+      - source-quality
+      - native-android
+      - native-ios
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Write hosted gate summary
+        env:
+          SOURCE_RESULT: ${{ needs.source-quality.result }}
+          ANDROID_RESULT: ${{ needs.native-android.result }}
+          IOS_RESULT: ${{ needs.native-ios.result }}
+          ANDROID_VERIFIED: ${{ needs.native-android.outputs.evidence_verified }}
+          IOS_VERIFIED: ${{ needs.native-ios.outputs.evidence_verified }}
+          ANDROID_SHA256: ${{ needs.native-android.outputs.artifact_sha256 }}
+          IOS_SHA256: ${{ needs.native-ios.outputs.artifact_sha256 }}
+          ANDROID_LAUNCH_VERIFIED: ${{ needs.native-android.outputs.launch_verified }}
+          IOS_LAUNCH_VERIFIED: ${{ needs.native-ios.outputs.launch_verified }}
+          ANDROID_LAUNCH_SHA256: ${{ needs.native-android.outputs.launch_screenshot_sha256 }}
+          IOS_LAUNCH_SHA256: ${{ needs.native-ios.outputs.launch_screenshot_sha256 }}
+        run: |
+          mkdir -p artifacts/phase0_summary
+          python3 scripts/write_phase0_gate_summary.py \
+            --source-result "$SOURCE_RESULT" \
+            --android-result "$ANDROID_RESULT" \
+            --ios-result "$IOS_RESULT" \
+            --android-verified "$ANDROID_VERIFIED" \
+            --ios-verified "$IOS_VERIFIED" \
+            --android-sha256 "$ANDROID_SHA256" \
+            --ios-sha256 "$IOS_SHA256" \
+            --android-launch-verified "$ANDROID_LAUNCH_VERIFIED" \
+            --ios-launch-verified "$IOS_LAUNCH_VERIFIED" \
+            --android-launch-sha256 "$ANDROID_LAUNCH_SHA256" \
+            --ios-launch-sha256 "$IOS_LAUNCH_SHA256" \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --commit-sha "$GITHUB_SHA" \
+            --git-ref "$GITHUB_REF" \
+            --output artifacts/phase0_summary/P00_T03_HOSTED_GATE_SUMMARY.md
+          cat artifacts/phase0_summary/P00_T03_HOSTED_GATE_SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload hosted gate summary
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: clearscan-phase0-summary
+          path: artifacts/phase0_summary
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
